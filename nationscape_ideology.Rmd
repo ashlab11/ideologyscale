@@ -1,0 +1,267 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Initial read of data
+```{r, echo=FALSE}
+suppressWarnings({
+#reading in the data, turning it into one document
+library(tidyverse)
+library(haven)
+library(data.table)
+library(forcats)
+process_file <- function(f){
+  as.data.frame(read_dta(f)) %>%
+    select(-starts_with("primary"))
+
+}
+
+# Find all .csv files
+files <- list.files(recursive=TRUE, full.names=TRUE, pattern="\\.dta$")
+
+# Apply the function to all files.
+reduced_files <- reduce(sapply(files, process_file), full_join)
+})
+```
+
+
+Initial data analysis -- removing cols with tons of NA, choosing questions to ask
+```{r}
+#looking at nas, only taking columns with less than 50% NA
+early_table <- reduced_files[, colSums(is.na(reduced_files))*2 < nrow(reduced_files)]
+na_percent <- colSums(is.na(early_table))/nrow(early_table)
+
+#want to split up entire dataset into two parts: questions we want to ask, and useful information for predicting the answer to these questions for people who didn't answer them in the first place
+early_table %<>%
+  select(-contains("text"), -contains("prim")) %>% #don't care about text/prim votes 
+  #turning 888 and 999 into NA
+  mutate(across(
+    .cols = everything(), 
+    .fns = ~na_if(., 888) 
+  )) %>%
+  mutate(across(
+    .cols = everything(), 
+    .fns = ~na_if(., 999)
+  ))
+    
+#questions that we want to ask
+#list of all of the questions:
+#c("guns_bg", "ban_guns", "ban_assault_rifles", "limit_magazines", "mctaxes", "raise_upper_tax", "estate_tax", "dreamers", "wall", "path_to_citizenship", "deportation", "college", "gov_insurance", "health_subsidies", "public_option", "abortion_conditions", "abortion_never", "late_term_abortion", "cap_carbon", "abortion_insurance", "abortion_waiting", "environment", "guaranteed_jobs", "green_new_deal", "gun_registry", "immigration_separation", "immigration_system", "immigration_wire", "israel", "marijuana", "maternityleave", "medicare_for_all", "military_size", "minwage", "oil_and_gas", "reparations", "muslimban", "right_to_work", "ten_commandments", "trade", "trans_military", "uctaxes2", "vouchers")
+
+
+#questions we'll ask -- maybe remove deportation or path to citizenship, they're opposites (theoretically...)
+#change this to not include a public option? add a different thing insted
+questions <- early_table %>%
+  select("guns_bg", "ban_assault_rifles", "ban_guns", "deportation", "wall", "path_to_citizenship", "mctaxes", "raise_upper_tax", "estate_tax", "college", "public_option", "medicare_for_all", "abortion_conditions", "late_term_abortion", "maternityleave", "military_size", "marijuana", "minwage", "cap_carbon", "environment", "guaranteed_jobs", "israel", "right_to_work", "reparations", "vouchers") %>%
+  mutate(across(
+    .cols = everything(), 
+    .fns = ~factor(unname(.))
+  )) 
+
+```
+
+
+Raking weights
+```{r}
+library(anesrake)
+library(forcats)
+
+vars_to_weigh <- early_table %>%
+  select("gender", "census_region", "hispanic", "race_ethnicity", "age", "language", "foreign_born", "household_income", "vote_2016") %>%
+  mutate(
+    gender = case_when(
+      gender == 1 ~ "Female", 
+      gender == 2 ~ "Male"
+    ),
+    census_region = case_when(
+      census_region == 1 ~ "Northeast", 
+      census_region == 2 ~ "Midwest", 
+      census_region == 3 ~ "South", 
+      census_region == 4 ~ "West"
+    ),
+    hispanic = case_when(
+      hispanic == 1 ~ "Not Hispanic", 
+      hispanic == 2 ~ "Mexican", 
+      hispanic %in% 3:15 ~ "Other Hispanic"
+    ), 
+    race_ethnicity = case_when(
+      race_ethnicity == 1 ~ "White", 
+      race_ethnicity == 2 ~ "Black", 
+      race_ethnicity %in% 4:14 ~ "AAPI", 
+      race_ethnicity %in% c(3, 15) ~ "Other"
+    ), 
+    age = case_when(
+      age >= 18 & age < 24 ~ "18-23", 
+      age >= 24 & age < 30 ~ "24-29", 
+      age >= 30 & age < 40 ~ "30-39", 
+      age >= 40 & age < 50 ~ "40-49", 
+      age >= 50 & age < 60 ~ "50-59", 
+      age >= 60 & age < 70 ~ "60-69", 
+      age >= 70 ~ ">70"
+    ), 
+    language = case_when(
+      language == 1 ~ "Spanish",
+      language == 2 ~ "Other", 
+      language == 3 ~ "English Only"
+    ), 
+    foreign_born = case_when(
+      foreign_born == 1 ~ "America", 
+      foreign_born == 2 ~ "Foreign"
+    ),
+    household_income = case_when(
+      household_income %in% 1:2 ~ "<20k", 
+      household_income %in% 3:5 ~ "20-35k", 
+      household_income %in% 6:8 ~ "35-50k", 
+      household_income %in% 9:11 ~ "50-65k", 
+      household_income %in% 12:14 ~ "65-80k", 
+      household_income %in% 15:18 ~ "80-100k", 
+      household_income == 19 ~ "100-125k", 
+      household_income %in% 20:22 ~ "125-200k", 
+      household_income %in% 23:24 ~ ">200k"
+    ), 
+    vote_2016 = case_when(
+      vote_2016 == 1 ~ "Trump", 
+      vote_2016 == 2 ~ "Clinton",
+      vote_2016 %in% 3:5 ~ "Other", 
+      vote_2016 %in% 6:8 ~ "No Vote"
+      )
+  ) %>%
+  mutate(across(
+    .cols = everything(), 
+    .fns = ~factor(unname(.))
+  )) %>%
+  mutate(
+    household_income = factor(household_income, levels = levels(addNA(household_income)), labels = c(levels(household_income), "Nonresponse"), exclude = NULL)) %>%
+  rownames_to_column()
+
+gender <- c(0.517, 0.483)
+names(gender) <- c("Female", "Male")
+
+census_region <- c(0.176, 0.209, 0.378, 0.237)
+names(census_region) <- c("Northeast", "Midwest", "South", "West")
+
+hispanic <- c(0.839, 0.097, 0.064)
+names(hispanic) <- c("Not Hispanic", "Mexican", "Other Hispanic")
+
+race_ethnicity <- c(0.742, 0.12, 0.068, 0.07)
+names(race_ethnicity) <- c("White", "Black", "AAPI", "Other")
+
+age <- c(0.095, 0.109, 0.174, 0.164, 0.174, 0.15, 0.133)
+names(age) <- c("18-23", "24-29", "30-39", "40-49", "50-59", "60-69", ">70")
+
+language <- c(0.129, 0.088, 0.783)
+names(language) <- c("Spanish", "Other", "English Only")
+
+foreign_born <- c(0.822, 0.178)
+names(foreign_born) <- c("America", "Foreign")
+
+household_income <- c(c(0.107, 0.116, 0.118, 0.113, 0.098, 0.11, 0.105, 0.146, 0.087) * mean(!is.na(result$household_income)), mean(is.na(result$household_income)))
+names(household_income) <- c("<20k", "20-35k", "35-50k", "50-65k", "65-80k", "80-100k", "100-125k", "125-200k", ">200k", "Nonresponse")
+
+vote_2016 <- c(0.272, 0.284, 0.033, 0.41)
+names(vote_2016) <- c("Trump", "Clinton", "Other", "No Vote")
+
+targets = list(gender, census_region, hispanic, race_ethnicity, age, language, foreign_born, household_income, vote_2016)
+names(targets) <- c("gender", "census_region", "hispanic", "race_ethnicity", "age", "language", "foreign_born", "household_income", "vote_2016")
+
+
+raked_weights <- anesrake(targets, as.data.frame(vars_to_weigh), caseid = as.numeric(vars_to_weigh$rowname),
+  verbose= FALSE, cap = 5, choosemethod = "total",
+  type = "pctlim", pctlim = .05, nlim = 5,
+  iterate = TRUE , force1 = TRUE)
+
+weights <- unname(as.vector(raked_weights[[1]]))
+```
+
+
+reducing table to 1000 based on weights so I can run a KNN on it
+```{r}
+n = 2500
+small_questions <- questions[sample(seq(nrow(questions)), n, replace = TRUE, prob = weights/sum(weights)), ]
+```
+
+Imputing values, turning them to numeric values that are either 0 or 1
+```{r}
+library(missForest)
+random_forest_imputation <- missForest(small_questions)$ximp
+
+complete_small <- apply(random_forest_imputation, 2, function(x) as.numeric(as.character(x)) - 1)
+
+#survey does it REALLY weirdly... they have 0 = agree and 1 = disagree, so I chose to go the other way
+complete_small <- as.data.frame(complete_small) %>% 
+  mutate(across(
+    .cols = everything(), 
+    .fns = ~case_when(
+      . == 1 ~ 0, 
+      . == 0 ~ 1
+    )
+  )) %>%
+  mutate(
+    ban_assault_rifles = case_when(
+      ban_guns == 1 ~ 1, 
+      TRUE ~ ban_assault_rifles
+    ),
+    public_option = case_when(
+      medicare_for_all == 1 ~ 1, 
+      TRUE ~ public_option
+    ), 
+    guns_bg = case_when(
+      ban_guns == 1 ~ 1, 
+      TRUE ~ guns_bg
+    )
+  )
+
+```
+
+MDS on the rest, and list of each value and how lib/conservative they are
+```{r}
+library(smacof)
+#random forest mds
+distance <- dist(complete_small, method = "euclidean")
+
+#the lower the value is, the more conservative the person is, and the higher it is, the more liberal they are
+liberal_conservative_val <- cmdscale(distance, k = 1)
+#mds <- mds(distance, ndim = 1, type = "interval", init = as.matrix(init), principal = TRUE, relax = TRUE)
+
+#the lower the MDS is, the more conservative the person is, and the higher it is, the more liberal they are
+
+
+```
+
+Person puts in a vector of answers, returns the person's ideology -- fix this
+```{r}
+evaluate_ideology <- function(answers){
+  vec_of_differences <- apply(sweep(complete_small, 2, answers, "-"), 1, function(x) sum(abs(x)))
+  min_distance <- which.min(vec_of_differences)
+  return (1 - ecdf(liberal_conservative_val)(liberal_conservative_val[min_distance]))
+}
+
+```
+
+Analyzing results!
+```{r}
+library(readr)
+brown_results <- read.csv("Ideology Measurement.csv") %>%
+  select(-"Timestamp") %>%
+  mutate(across(
+    everything(), 
+    ~case_when(
+      . == "Yes" ~ 1, 
+      . == "No" ~ 0, 
+      . == "Not sure" ~ 0.5
+    )
+  ))
+
+individual_ideology <- apply(brown_results, 1, evaluate_ideology)
+mean_ideology <- mean(individual_ideology)
+median_ideology <- median(individual_ideology)
+```
+
+
+```{r}
+most_lib_beliefs <- c(1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0)
+evaluate_ideology(most_lib_beliefs)
+```
+
+
