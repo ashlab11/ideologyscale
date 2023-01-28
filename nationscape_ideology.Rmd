@@ -53,7 +53,7 @@ early_table %<>%
 #questions we'll ask -- maybe remove deportation or path to citizenship, they're opposites (theoretically...)
 #change this to not include a public option? add a different thing insted
 questions <- early_table %>%
-  select("guns_bg", "ban_assault_rifles", "ban_guns", "deportation", "wall", "path_to_citizenship", "mctaxes", "raise_upper_tax", "estate_tax", "college", "public_option", "medicare_for_all", "abortion_conditions", "late_term_abortion", "maternityleave", "military_size", "marijuana", "minwage", "cap_carbon", "environment", "guaranteed_jobs", "israel", "right_to_work", "reparations", "vouchers") %>%
+  select("guns_bg", "ban_assault_rifles", "ban_guns", "deportation", "wall", "path_to_citizenship", "raise_upper_tax", "estate_tax", "college", "public_option", "ten_commandments", "abortion_conditions", "late_term_abortion", "maternityleave", "military_size", "marijuana", "minwage", "cap_carbon", "environment", "guaranteed_jobs", "right_to_work", "reparations", "vouchers") %>%
   mutate(across(
     .cols = everything(), 
     .fns = ~factor(unname(.))
@@ -156,7 +156,7 @@ names(language) <- c("Spanish", "Other", "English Only")
 foreign_born <- c(0.822, 0.178)
 names(foreign_born) <- c("America", "Foreign")
 
-household_income <- c(c(0.107, 0.116, 0.118, 0.113, 0.098, 0.11, 0.105, 0.146, 0.087) * mean(!is.na(result$household_income)), mean(is.na(result$household_income)))
+household_income <- c(c(0.107, 0.116, 0.118, 0.113, 0.098, 0.11, 0.105, 0.146, 0.087) * mean(!is.na(reduced_files$household_income)), mean(is.na(reduced_files$household_income)))
 names(household_income) <- c("<20k", "20-35k", "35-50k", "50-65k", "65-80k", "80-100k", "100-125k", "125-200k", ">200k", "Nonresponse")
 
 vote_2016 <- c(0.272, 0.284, 0.033, 0.41)
@@ -175,9 +175,9 @@ weights <- unname(as.vector(raked_weights[[1]]))
 ```
 
 
-reducing table to 1000 based on weights so I can run a KNN on it
+reducing table to 3000 based on weights so I can run a KNN on it
 ```{r}
-n = 2500
+n = 3000
 small_questions <- questions[sample(seq(nrow(questions)), n, replace = TRUE, prob = weights/sum(weights)), ]
 ```
 
@@ -202,15 +202,19 @@ complete_small <- as.data.frame(complete_small) %>%
       ban_guns == 1 ~ 1, 
       TRUE ~ ban_assault_rifles
     ),
-    public_option = case_when(
-      medicare_for_all == 1 ~ 1, 
-      TRUE ~ public_option
-    ), 
     guns_bg = case_when(
       ban_guns == 1 ~ 1, 
       TRUE ~ guns_bg
     )
-  )
+  ) %>%
+  #flipping questions that have conservative responses to be in line with everything else (liberal = 1, conservative = 0)
+  mutate(across(
+    .cols = c("deportation", "wall", "estate_tax", "ten_commandments", "right_to_work", "vouchers"), 
+    .fns = ~case_when(
+      . ==  1 ~ 0, 
+      . == 0 ~ 1
+    )
+  ))
 
 ```
 
