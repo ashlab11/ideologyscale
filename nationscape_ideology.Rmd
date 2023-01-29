@@ -51,9 +51,9 @@ early_table %<>%
 
 
 #questions we'll ask -- maybe remove deportation or path to citizenship, they're opposites (theoretically...)
-#change this to not include a public option? add a different thing insted
+#change this to not include a public option? add a different thing instead
 questions <- early_table %>%
-  select("guns_bg", "ban_assault_rifles", "ban_guns", "deportation", "wall", "path_to_citizenship", "raise_upper_tax", "estate_tax", "college", "public_option", "ten_commandments", "abortion_conditions", "late_term_abortion", "maternityleave", "military_size", "marijuana", "minwage", "cap_carbon", "environment", "guaranteed_jobs", "right_to_work", "reparations", "vouchers") %>%
+  select("guns_bg", "ban_assault_rifles", "ban_guns", "deportation", "wall", "path_to_citizenship", "raise_upper_tax", "estate_tax", "college", "public_option", "ten_commandments", "abortion_conditions", "late_term_abortion", "maternityleave", "military_size", "marijuana", "minwage", "cap_carbon", "environment", "guaranteed_jobs", "trade", "reparations", "vouchers") %>%
   mutate(across(
     .cols = everything(), 
     .fns = ~factor(unname(.))
@@ -206,17 +206,37 @@ complete_small <- as.data.frame(complete_small) %>%
       ban_guns == 1 ~ 1, 
       TRUE ~ guns_bg
     )
-  ) %>%
-  #flipping questions that have conservative responses to be in line with everything else (liberal = 1, conservative = 0)
-  mutate(across(
-    .cols = c("deportation", "wall", "estate_tax", "ten_commandments", "right_to_work", "vouchers"), 
-    .fns = ~case_when(
-      . ==  1 ~ 0, 
-      . == 0 ~ 1
-    )
-  ))
+  )
 
 ```
+
+
+Using MIRT!
+```{r}
+library(mirt)
+two_param <- mirt(complete_small, model = 1, itemtype = "2PL", se = TRUE)
+liberal_conservative_values <- fscores(two_param)
+
+```
+
+```{r}
+library(wnominate)
+rollcall_positions <- rollcall(complete_small)
+wnominate <- wnominate(rollcall_positions, dims = 1, polarity = c(94))
+wnominate_vals <- wnominate$legislators$coord1D
+```
+
+```{r}
+plot(two_param, type = "rxx")
+plot(two_param, type = "infoSE")
+plot(nominal, type = "trace")
+plot(two_param, type = "score")
+plot(two_param, type = "EAPsum")
+plot(nominal, type = "infoSE")
+
+
+```
+
 
 MDS on the rest, and list of each value and how lib/conservative they are
 ```{r}
@@ -237,9 +257,14 @@ Person puts in a vector of answers, returns the person's ideology -- fix this
 ```{r}
 evaluate_ideology <- function(answers){
   vec_of_differences <- apply(sweep(complete_small, 2, answers, "-"), 1, function(x) sum(abs(x)))
-  min_distance <- which.min(vec_of_differences)
-  return (1 - ecdf(liberal_conservative_val)(liberal_conservative_val[min_distance]))
+  min_distance <- min(vec_of_differences)
+  closest_vals <- liberal_conservative_values[vec_of_differences == min_distance]
+  vec_of_ideologies <- sapply(closest_vals, function(x) ecdf(liberal_conservative_values)(x))
+  
+  
+  return (mean(vec_of_ideologies))
 }
+
 
 ```
 
@@ -264,7 +289,7 @@ median_ideology <- median(individual_ideology)
 
 
 ```{r}
-most_lib_beliefs <- c(1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0)
+most_lib_beliefs <- 
 evaluate_ideology(most_lib_beliefs)
 ```
 
