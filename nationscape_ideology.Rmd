@@ -237,6 +237,65 @@ plot(nominal, type = "infoSE")
 
 ```
 
+Repeated ideology score -- testing the difference between nominate and two-parameter logistic function with Monte Carlo method
+```{r}
+#simulating ideology function -- simulates my ideology
+sim_ideology <- function(){
+  small_questions <- questions[sample(seq(nrow(questions)), 1500, replace = TRUE, prob = weights/sum(weights)), ]
+  
+  random_forest_imputation <- missForest(small_questions)$ximp
+  complete_small <- apply(random_forest_imputation, 2, function(x) as.numeric(as.character(x)) - 1)
+  
+  complete_small <- as.data.frame(complete_small) %>% 
+  mutate(across(
+    .cols = everything(), 
+    .fns = ~case_when(
+      . == 1 ~ 0, 
+      . == 0 ~ 1
+    )
+  )) %>%
+  mutate(
+    ban_assault_rifles = case_when(
+      ban_guns == 1 ~ 1, 
+      TRUE ~ ban_assault_rifles
+    ),
+    guns_bg = case_when(
+      ban_guns == 1 ~ 1, 
+      TRUE ~ guns_bg
+    )
+  )
+  #gets wnominate values
+  rollcall_positions <- rollcall(complete_small)
+  wnominate <- wnominate(rollcall_positions, dims = 1, polarity = c(
+    which.min(apply(sweep(complete_small, 2, c(0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1)), 1, function(x) sum(abs(x))))
+  ))
+  wnominate_vals <- wnominate$legislators$coord1D
+  
+  #gets two-param values
+  two_param <- mirt(complete_small, model = 1, itemtype = "2PL", se = TRUE)
+  two_param_vals <- fscores(two_param)
+  
+  #finding the minimum distance between my ideology and an ideology in the dataset
+  vec_of_differences <- apply(sweep(complete_small, 2, c(1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0), "-"), 1, function(x) sum(abs(x)))
+  min_distance <- min(vec_of_differences)
+  
+  #getting the mean ideologies of all values in the wnominate that are closest to my ideology
+  closest_vals_wnom <- wnominate_vals[vec_of_differences == min_distance]
+  vec_of_ideologies_wnom <- sapply(closest_vals_wnom, function(x) ecdf(wnominate_vals)(x))
+  
+  #getting mean ideologies of all values in the two-param that are closest to my ideology
+  closest_vals_two_param <- two_param_vals[vec_of_differences == min_distance]
+  vec_of_ideologies_two_param <- sapply(closest_vals_two_param, function(x) ecdf(two_param_vals)(x))
+  
+  #returning a dataframe of the means of both ideologies
+  return (data.frame(mean(vec_of_ideologies_wnom), mean(vec_of_ideologies_two_param)))
+}
+
+#replicating the simulation 75 times
+ideology_simulation <- replicate(75, sim_ideology())
+
+```
+
 
 MDS on the rest, and list of each value and how lib/conservative they are
 ```{r}
