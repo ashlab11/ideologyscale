@@ -237,7 +237,11 @@ plot(nominal, type = "infoSE")
 
 ```
 
-Repeated ideology score -- testing the difference between nominate and two-parameter logistic function with Monte Carlo method
+
+
+
+
+Repeated ideology score -- testing the difference between nominate and two-parameter logistic function with Monte Carlo method.
 ```{r}
 #simulating ideology function -- simulates my ideology
 sim_ideology <- function(){
@@ -271,9 +275,9 @@ sim_ideology <- function(){
   ))
   wnominate_vals <- wnominate$legislators$coord1D
   
-  #gets two-param values
-  two_param <- mirt(complete_small, model = 1, itemtype = "2PL", se = TRUE)
-  two_param_vals <- fscores(two_param)
+  #gets ideal values
+  ideal <- ideal(rollcall_positions)
+  ideal_vals <- as.vector(ideal_test$xbar)
   
   #finding the minimum distance between my ideology and an ideology in the dataset
   vec_of_differences <- apply(sweep(complete_small, 2, c(1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0), "-"), 1, function(x) sum(abs(x)))
@@ -284,11 +288,11 @@ sim_ideology <- function(){
   vec_of_ideologies_wnom <- sapply(closest_vals_wnom, function(x) ecdf(wnominate_vals)(x))
   
   #getting mean ideologies of all values in the two-param that are closest to my ideology
-  closest_vals_two_param <- two_param_vals[vec_of_differences == min_distance]
-  vec_of_ideologies_two_param <- sapply(closest_vals_two_param, function(x) ecdf(two_param_vals)(x))
+  closest_vals_ideal <- ideal_vals[vec_of_differences == min_distance]
+  vec_of_ideologies_ideal <- sapply(closest_vals_ideal, function(x) ecdf(ideal_vals)(x))
   
   #returning a dataframe of the means of both ideologies
-  return (data.frame(mean(vec_of_ideologies_wnom), mean(vec_of_ideologies_two_param)))
+  return (data.frame(mean(vec_of_ideologies_wnom), mean(vec_of_ideologies_ideal)))
 }
 
 #replicating the simulation 75 times
@@ -296,6 +300,14 @@ ideology_simulation <- replicate(75, sim_ideology())
 
 ```
 
+Testing the result of the ideology simulation, with NOMINATE and IDEAL. Since wnominate is considerably more normal and also has many fewer outliers, I'm going to work with it instead of IDEAL. Also, I am most definitely not more liberal than 49% of America... 80% is much closer to the correct amount. 
+```{r}
+nominate_ideology <- unlist(ideology_simulation)[seq(1, 150, 2)]
+ideal_ideology <- unlist(ideology_simulation)[seq(2, 150, 2)]
+hist(nominate_ideology)
+hist(ideal_ideology)
+
+```
 
 MDS on the rest, and list of each value and how lib/conservative they are
 ```{r}
