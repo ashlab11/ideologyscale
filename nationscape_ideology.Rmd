@@ -226,16 +226,8 @@ wnominate <- wnominate(rollcall_positions, dims = 1, polarity = c(94))
 wnominate_vals <- wnominate$legislators$coord1D
 ```
 
-```{r}
-plot(two_param, type = "rxx")
-plot(two_param, type = "infoSE")
-plot(nominal, type = "trace")
-plot(two_param, type = "score")
-plot(two_param, type = "EAPsum")
-plot(nominal, type = "infoSE")
 
 
-```
 
 
 
@@ -276,8 +268,8 @@ sim_ideology <- function(){
   wnominate_vals <- wnominate$legislators$coord1D
   
   #gets ideal values
-  ideal <- ideal(rollcall_positions)
-  ideal_vals <- as.vector(ideal_test$xbar)
+  ideal <- mirt(complete_small, model = 1, itemtype = "2PL", se = TRUE)
+  ideal_vals <- fscores(ideal)
   
   #finding the minimum distance between my ideology and an ideology in the dataset
   vec_of_differences <- apply(sweep(complete_small, 2, c(1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0), "-"), 1, function(x) sum(abs(x)))
@@ -296,33 +288,10 @@ sim_ideology <- function(){
 }
 
 #replicating the simulation 75 times
-ideology_simulation <- replicate(75, sim_ideology())
+ideology_simulation <- replicate(50, sim_ideology())
 
 ```
 
-Testing the result of the ideology simulation, with NOMINATE and IDEAL. Since wnominate is considerably more normal and also has many fewer outliers, I'm going to work with it instead of IDEAL. Also, I am most definitely not more liberal than 49% of America... 80% is much closer to the correct amount. 
-```{r}
-nominate_ideology <- unlist(ideology_simulation)[seq(1, 150, 2)]
-ideal_ideology <- unlist(ideology_simulation)[seq(2, 150, 2)]
-hist(nominate_ideology)
-hist(ideal_ideology)
-
-```
-
-MDS on the rest, and list of each value and how lib/conservative they are
-```{r}
-library(smacof)
-#random forest mds
-distance <- dist(complete_small, method = "euclidean")
-
-#the lower the value is, the more conservative the person is, and the higher it is, the more liberal they are
-liberal_conservative_val <- cmdscale(distance, k = 1)
-#mds <- mds(distance, ndim = 1, type = "interval", init = as.matrix(init), principal = TRUE, relax = TRUE)
-
-#the lower the MDS is, the more conservative the person is, and the higher it is, the more liberal they are
-
-
-```
 
 Person puts in a vector of answers, returns the person's ideology -- fix this
 ```{r}
@@ -338,6 +307,9 @@ evaluate_ideology <- function(answers){
 
 
 ```
+
+Creating 50 dataframes
+
 
 Analyzing results!
 ```{r}
@@ -358,10 +330,5 @@ mean_ideology <- mean(individual_ideology)
 median_ideology <- median(individual_ideology)
 ```
 
-
-```{r}
-most_lib_beliefs <- 
-evaluate_ideology(most_lib_beliefs)
-```
 
 
