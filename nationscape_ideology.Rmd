@@ -175,123 +175,85 @@ weights <- unname(as.vector(raked_weights[[1]]))
 ```
 
 
-reducing table to 3000 based on weights so I can run a KNN on it
+This creates 50 dataframes and the list of wnominate values for each dataframe
 ```{r}
-n = 3000
-small_questions <- questions[sample(seq(nrow(questions)), n, replace = TRUE, prob = weights/sum(weights)), ]
-```
-
-Imputing values, turning them to numeric values that are either 0 or 1
-```{r}
-library(missForest)
-random_forest_imputation <- missForest(small_questions)$ximp
-
-complete_small <- apply(random_forest_imputation, 2, function(x) as.numeric(as.character(x)) - 1)
-
-#survey does it REALLY weirdly... they have 0 = agree and 1 = disagree, so I chose to go the other way
-complete_small <- as.data.frame(complete_small) %>% 
-  mutate(across(
-    .cols = everything(), 
-    .fns = ~case_when(
-      . == 1 ~ 0, 
-      . == 0 ~ 1
-    )
-  )) %>%
-  mutate(
-    ban_assault_rifles = case_when(
-      ban_guns == 1 ~ 1, 
-      TRUE ~ ban_assault_rifles
-    ),
-    guns_bg = case_when(
-      ban_guns == 1 ~ 1, 
-      TRUE ~ guns_bg
-    )
-  )
-
-```
-
-
-Using MIRT!
-```{r}
-library(mirt)
-two_param <- mirt(complete_small, model = 1, itemtype = "2PL", se = TRUE)
-liberal_conservative_values <- fscores(two_param)
-
-```
-
-```{r}
-library(wnominate)
-rollcall_positions <- rollcall(complete_small)
-wnominate <- wnominate(rollcall_positions, dims = 1, polarity = c(94))
-wnominate_vals <- wnominate$legislators$coord1D
-```
-
-
-
-
-
-
-
-
-Repeated ideology score -- testing the difference between nominate and two-parameter logistic function with Monte Carlo method.
-```{r}
-#simulating ideology function -- simulates my ideology
 sim_ideology <- function(){
+  #reducing questions to 1500
   small_questions <- questions[sample(seq(nrow(questions)), 1500, replace = TRUE, prob = weights/sum(weights)), ]
   
+  #imputing missing vals
   random_forest_imputation <- missForest(small_questions)$ximp
   complete_small <- apply(random_forest_imputation, 2, function(x) as.numeric(as.character(x)) - 1)
   
-  complete_small <- as.data.frame(complete_small) %>% 
-  mutate(across(
-    .cols = everything(), 
-    .fns = ~case_when(
-      . == 1 ~ 0, 
-      . == 0 ~ 1
-    )
-  )) %>%
-  mutate(
-    ban_assault_rifles = case_when(
-      ban_guns == 1 ~ 1, 
-      TRUE ~ ban_assault_rifles
-    ),
-    guns_bg = case_when(
-      ban_guns == 1 ~ 1, 
-      TRUE ~ guns_bg
-    )
-  )
-  #gets wnominate values
+  #switching 0 and 1, because nationscape does it opposite as expected
+  complete_small <- as.data.frame(complete_small) %>%
+    mutate(across(
+      .cols = everything(), 
+      .fns = ~case_when(
+        . == 1 ~ 0, 
+        . == 0 ~ 1
+      )
+    )) %>%
+    mutate(
+      ban_assault_rifles = case_when(
+        ban_guns == 1 ~ 1, 
+        TRUE ~ ban_assault_rifles
+      ),
+      guns_bg = case_when(
+        ban_guns == 1 ~ 1, 
+        TRUE ~ guns_bg
+      )
+    )    
+  
+  #finding the most conservative answers on the survey dataframe, and returning its index
+  find_most_conservative_val <- function(survey_dataframe){
+    conservative_positions <- c(0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1)
+    
+    vec_of_differences <- apply(sweep(survey_dataframe, 2, conservative_positions, "-"), 1, function(x) sum(abs(x)))
+    
+    return(which.min(vec_of_differences))
+  }
+  
+  #getting coordinates
   rollcall_positions <- rollcall(complete_small)
-  wnominate <- wnominate(rollcall_positions, dims = 1, polarity = c(
-    which.min(apply(sweep(complete_small, 2, c(0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1)), 1, function(x) sum(abs(x))))
-  ))
-  wnominate_vals <- wnominate$legislators$coord1D
+  wnominate_vals <- wnominate(rollcall_positions, dims = 1, polarity = c(find_most_conservative_val(complete_small)))$legislators$coord1D
   
-  #gets ideal values
-  ideal <- mirt(complete_small, model = 1, itemtype = "2PL", se = TRUE)
-  ideal_vals <- fscores(ideal)
-  
-  #finding the minimum distance between my ideology and an ideology in the dataset
-  vec_of_differences <- apply(sweep(complete_small, 2, c(1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0), "-"), 1, function(x) sum(abs(x)))
-  min_distance <- min(vec_of_differences)
-  
-  #getting the mean ideologies of all values in the wnominate that are closest to my ideology
-  closest_vals_wnom <- wnominate_vals[vec_of_differences == min_distance]
-  vec_of_ideologies_wnom <- sapply(closest_vals_wnom, function(x) ecdf(wnominate_vals)(x))
-  
-  #getting mean ideologies of all values in the two-param that are closest to my ideology
-  closest_vals_ideal <- ideal_vals[vec_of_differences == min_distance]
-  vec_of_ideologies_ideal <- sapply(closest_vals_ideal, function(x) ecdf(ideal_vals)(x))
-  
-  #returning a dataframe of the means of both ideologies
-  return (data.frame(mean(vec_of_ideologies_wnom), mean(vec_of_ideologies_ideal)))
+  return(
+    list(complete_small, wnominate_vals)
+  )
+
 }
 
-#replicating the simulation 75 times
-ideology_simulation <- replicate(50, sim_ideology())
-
+result_of_sim <- replicate(50, sim_ideology())
 ```
 
+This function, evaluate_ideology_total, is made to use the previously created sample response dataframes and wnominate results from those dataframes to evaluate a given person's ideology. To do this, it must use many nested lists. The get_indexes_of_ideology function takes in a survey dataframe and returns all the indexes that have ideologies closest to the given ideology. Ideology_index maps the response dataframe over this function to get a list of lists of ideology indexes (TRUE or FALSE). Then, I create a var called list_of_nominate_subset, which turns these true and falses into actual wnominate numbers for each dataframe. Then, I do a double map: first, to run through the list of full nominate lists at the same time as the list of subsets of nominate lists. Then, since I want to get an ecdf for EVERY number in the subset of nominate list, I run a second map on the subset list, and get the mean ideology for every dataframe. Then, I get the mean ideology across all dataframes.
+```{r}
+library(purrr)
+list_of_response_df <- map(seq(1, 100, 2), ~result_of_sim[[.]])
+list_of_nominate_full <-  map(seq(2, 100, 2), ~result_of_sim[[.]])
+
+evaluate_ideology_total <- function(answers){
+  #returns the indexes that are closest to a given person's ideology in a given survey dataframe
+  get_indexes_of_ideology <- function(survey_dataframe){
+    vec_of_differences <- apply(sweep(survey_dataframe, 2, answers, "-"), 1, function(x) sum(abs(x)))
+    min_dist <- min(vec_of_differences)
+    return(vec_of_differences == min_dist)
+  }
+  #gets list of false and true's for which ideology corresponds to a given person for each dataframe
+  ideology_index <- map(list_of_response_df, get_indexes_of_ideology)
+  #getting the wnominate vals we care about for every dataframe
+  list_of_nominate_subset <- map2(list_of_nominate_full, ideology_index, ~.x[.y])
+  
+  #getting the list of ideology percentages from every dataframe
+  list_of_ideology_percentages <- map2(list_of_nominate_full, list_of_nominate_subset, function(full, subset) mean(unlist(map(subset, ~ 1 - ecdf(full)(.)))))
+  
+  final_ideology <- mean(unlist(list_of_ideology_percentages))
+  #final_ideology <- mean(map(list_of_ideologies, mean))
+  return(final_ideology)
+}
+testing_eval <- evaluate_ideology_total(c(0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1))
+```
 
 Person puts in a vector of answers, returns the person's ideology -- fix this
 ```{r}
