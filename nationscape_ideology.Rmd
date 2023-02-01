@@ -49,6 +49,11 @@ early_table %<>%
 #list of all of the questions:
 #c("guns_bg", "ban_guns", "ban_assault_rifles", "limit_magazines", "mctaxes", "raise_upper_tax", "estate_tax", "dreamers", "wall", "path_to_citizenship", "deportation", "college", "gov_insurance", "health_subsidies", "public_option", "abortion_conditions", "abortion_never", "late_term_abortion", "cap_carbon", "abortion_insurance", "abortion_waiting", "environment", "guaranteed_jobs", "green_new_deal", "gun_registry", "immigration_separation", "immigration_system", "immigration_wire", "israel", "marijuana", "maternityleave", "medicare_for_all", "military_size", "minwage", "oil_and_gas", "reparations", "muslimban", "right_to_work", "ten_commandments", "trade", "trans_military", "uctaxes2", "vouchers")
 
+#questions I'm considering
+#c("guns_bg", "ban_assault_rifles", "wall", "path_to_citizenship", "raise_upper_tax", "estate_tax", "college", "public_option", "ten_commandments", "abortion_conditions", "late_term_abortion", "maternityleave", "military_size", "minwage", "environment", "guaranteed_jobs", "reparations", "vouchers", "muslimban", "trans_military")
+
+
+
 
 #questions we'll ask -- maybe remove deportation or path to citizenship, they're opposites (theoretically...)
 #change this to not include a public option? add a different thing instead
@@ -208,6 +213,7 @@ sim_ideology <- function(){
   #finding the most conservative answers on the survey dataframe, and returning its index
   find_most_conservative_val <- function(survey_dataframe){
     conservative_positions <- c(0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1)
+    #conservative_positions <- c(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0)
     
     vec_of_differences <- apply(sweep(survey_dataframe, 2, conservative_positions, "-"), 1, function(x) sum(abs(x)))
     
@@ -279,6 +285,8 @@ sheet_results <- drive_get(as_id("https://docs.google.com/spreadsheets/d/1K0EBI4
   range_read()
 
 liberal_beliefs <- sheet_results[, length(sheet_results)]
+ 
+  
 brown_ideology <- sheet_results %>%
   dplyr::select(-"Timestamp", -"What percent of people do you believe you are more liberal than?") %>%
   mutate(across(
