@@ -270,14 +270,17 @@ evaluate_ideology <- function(answers){
 
 ```
 
-Creating 50 dataframes
-
 
 Analyzing results!
 ```{r}
-library(readr)
-brown_results <- read.csv("Ideology Measurement.csv") %>%
-  select(-"Timestamp") %>%
+library(googledrive)
+library(googlesheets4)
+sheet_results <- drive_get(as_id("https://docs.google.com/spreadsheets/d/1K0EBI4bNeV9xpF7OBAawyzhGHODoxmE8V1b2fQeDqpQ/edit?resourcekey#gid=15109010")) %>%
+  range_read()
+
+liberal_beliefs <- sheet_results[, length(sheet_results)]
+brown_ideology <- sheet_results %>%
+  dplyr::select(-"Timestamp", -"What percent of people do you believe you are more liberal than?") %>%
   mutate(across(
     everything(), 
     ~case_when(
@@ -287,7 +290,7 @@ brown_results <- read.csv("Ideology Measurement.csv") %>%
     )
   ))
 
-individual_ideology <- apply(brown_results, 1, evaluate_ideology)
+individual_ideology <- apply(brown_ideology, 1, evaluate_ideology_total)
 mean_ideology <- mean(individual_ideology)
 median_ideology <- median(individual_ideology)
 ```
